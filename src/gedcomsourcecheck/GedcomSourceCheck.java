@@ -6,7 +6,6 @@
 package gedcomsourcecheck;
 
 import java.io.IOException;
-import java.io.*;
 import java.util.List;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -97,6 +96,7 @@ public class GedcomSourceCheck {
     /**
      * The main method
      *
+     * @param path 
      * @throws GedcomParserException if the file can't be parsed
      * @throws IOException if the file can't be read
      */
