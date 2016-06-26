@@ -15,6 +15,8 @@ import java.text.SimpleDateFormat;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
+import java.util.Locale;
+import java.util.ResourceBundle;
 
 import org.gedcom4j.model.*;
 import org.gedcom4j.parser.GedcomParser;
@@ -96,7 +98,7 @@ public class GedcomSourceCheck {
     /**
      * The main method
      *
-     * @param path 
+     * @param path
      * @throws GedcomParserException if the file can't be parsed
      * @throws IOException if the file can't be read
      */
@@ -147,7 +149,7 @@ public class GedcomSourceCheck {
             printOutFactsOfIndividual(indi, name, "direct", indiDateOfBirth, indiDateOfDeath);
 
             for (PersonalName pName : indi.names) {
-                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: 'NAME', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
+                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: '"+localiseString("NAME")+"', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
             }
 
             for (FamilySpouse fams : indi.familiesWhereSpouse) {
@@ -158,7 +160,6 @@ public class GedcomSourceCheck {
                 for (Individual child : fam.children) {
 
                     //printOutFactsOfIndividual(child, name, "fams_children", indiDateOfBirth, indiDateOfDeath);
-
                     for (IndividualEvent cevent : child.events) {
                         String type = (cevent.type == IndividualEventType.EVENT) ? cevent.subType.value : cevent.type.toString();
                         String description = "";
@@ -290,11 +291,10 @@ public class GedcomSourceCheck {
         String aBasePart = pBasePart + "relevance:'" + pRelevance + "', ";
 
         // HashMap<String, Object> config = relevanceMapping.get(pRelevance);
-
         for (IndividualAttribute attrib : pIndi.attributes) {
             printOutFactDependentOnDate(attrib.date, pMinDate, pMaxDate,
                     aBasePart + concatDatePart(attrib.date, pMinDate)
-                    + "factType: '" + attrib.type
+                    + "factType: '" + localiseString(attrib.type.toString())
                     + "', factDescription: '" + attrib.description + "', "
                     + concatSourcesJsonPart(attrib.citations) + "},\n");
         }
@@ -315,7 +315,7 @@ public class GedcomSourceCheck {
 
             printOutFactDependentOnDate(ievent.date, pMinDate, pMaxDate,
                     aBasePart + concatDatePart(ievent.date, pMinDate)
-                    + "factType: '" + type
+                    + "factType: '" + localiseString(type)
                     + "', factDescription: '" + description + "', "
                     + concatSourcesJsonPart(ievent.citations) + "},\n");
         }
@@ -329,11 +329,24 @@ public class GedcomSourceCheck {
                 String place = (fevent.place != null) ? fevent.place.placeName : "";
                 printOutFactDependentOnDate(fevent.date, pMinDate, pMaxDate,
                         aBasePart + concatDatePart(fevent.date, pMinDate)
-                        + "factType: '" + type
+                        + "factType: '" + localiseString(type)
                         + "', factDescription: 'Heirat in " + place + "', "
                         + concatSourcesJsonPart(fevent.citations) + "},\n");
             }
         }
+    }
+
+    private static String localiseString(String aKey) {
+
+        ResourceBundle labels = ResourceBundle.getBundle("util.LocalisedText", Locale.getDefault());
+        String retVal;
+
+        try {
+            retVal = labels.getString(aKey);
+        } catch (java.util.MissingResourceException e) {
+            retVal = aKey;
+        }
+        return retVal;
     }
 
     /**
@@ -451,7 +464,10 @@ public class GedcomSourceCheck {
             long diffInDays = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
             long age = diffInDays / 365;
 
-            return "factDate: '" + outptFormatter.format(eventDate) + "', factInternalDate:'" + outptFormatter.format(eventDate) + "', age: '" + age + "', ";
+            // Sample formating date to a special locale format
+            DateFormat df = DateFormat.getDateInstance(DateFormat.MEDIUM, new java.util.Locale("en"));
+
+            return "factDate: '" + df.format(eventDate) + "', factInternalDate:'" + outptFormatter.format(eventDate) + "', age: '" + age + "', ";
         } catch (ParseException e) {
             return "factDate: '" + pGedcomDate.value + "', factInternalDate:'01.01.1200', age: '', ";
         }
@@ -482,6 +498,12 @@ public class GedcomSourceCheck {
                 outStringDate = inStringDate.replace("ABT ", "");
             } else if (inStringDate.contains("BEF")) {
                 outStringDate = inStringDate.replace("BEF ", "");
+            } else if (inStringDate.contains("CAL")) {
+                outStringDate = inStringDate.replace("CAL ", "");
+            } else if (inStringDate.contains("TO")) {
+                outStringDate = inStringDate.replace("TO ", "");
+            } else if (inStringDate.contains("EST")) {
+                outStringDate = inStringDate.replace("EST ", "");
             } else if (inStringDate.contains("AFT")) {
                 outStringDate = inStringDate.replace("AFT ", "");
             } else if (inStringDate.contains("FROM")) {
