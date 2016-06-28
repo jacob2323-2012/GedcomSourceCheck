@@ -5,14 +5,16 @@
  */
 package gedcomsourcecheck;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.MessageFormat;
 import java.util.List;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 import java.text.SimpleDateFormat;
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.Locale;
@@ -29,6 +31,12 @@ import org.gedcom4j.parser.GedcomParserException;
  * @author frizbog1
  */
 public class GedcomSourceCheck {
+
+    private Locale _locale;
+
+    public Locale getLocale() {
+        return _locale;
+    }
 
     /**
      * The report buffer
@@ -95,6 +103,10 @@ public class GedcomSourceCheck {
 
     }
 
+    public GedcomSourceCheck(Locale pLocale) {
+        _locale = pLocale;
+    }
+
     /**
      * The main method
      *
@@ -102,11 +114,11 @@ public class GedcomSourceCheck {
      * @throws GedcomParserException if the file can't be parsed
      * @throws IOException if the file can't be read
      */
-    public static String writeJson(String path) throws IOException, GedcomParserException, ParseException {
+    public String writeJson(BufferedInputStream stream) throws IOException, GedcomParserException, ParseException {
 
         // Load the gedcom file
         GedcomParser parser = new GedcomParser();
-        parser.load(path);
+        parser.load(stream);
 
         // Stop if there were parser errors
         if (!parser.errors.isEmpty()) {
@@ -120,18 +132,18 @@ public class GedcomSourceCheck {
         ///
         System.out.println("AT start");
 
-        String header = "Ext.define('Gedcom.store.SourcesByIndividual', {extend: 'Ext.data.Store',data: [\n";
+        String header = "data: [\n";
         reportBuf.append(header);
 
         for (Individual indi : gedcom.individuals.values()) {
-            Date indiDateOfBirth = parseGedcomDate(new StringWithCustomTags("01 Jan 1200"));
+            Date indiDateOfBirth = parseGedcomDateWithAdditions(new StringWithCustomTags("01 Jan 1200"));
             Date indiDateOfDeath = new Date();
 
             String name = "{formattedName: '" + indi.formattedName() + "', ";
             String aBasePart = name + "relevance:'direct', ";
 
             for (IndividualEvent ievent : indi.events) {
-                Date eventDate = parseGedcomDate(ievent.date);
+                Date eventDate = parseGedcomDateWithAdditions(ievent.date);
                 switch (ievent.type) {
                     case BIRTH:
                         if (eventDate != null) {
@@ -149,7 +161,7 @@ public class GedcomSourceCheck {
             printOutFactsOfIndividual(indi, name, "direct", indiDateOfBirth, indiDateOfDeath);
 
             for (PersonalName pName : indi.names) {
-                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: '"+localiseString("NAME")+"', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
+                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: '" + localiseString("NAME") + "', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
             }
 
             for (FamilySpouse fams : indi.familiesWhereSpouse) {
@@ -172,7 +184,7 @@ public class GedcomSourceCheck {
                                 break;
 
                         }
-                        Date eventDate = parseGedcomDate(cevent.date);
+                        Date eventDate = parseGedcomDateWithAdditions(cevent.date);
                         if (eventDate != null && indiDateOfDeath != null && indiDateOfBirth != null && eventDate.before(indiDateOfDeath)) {
                             reportBuf.append(aBasePart + concatDatePart(cevent.date, indiDateOfBirth) + "factType: '" + type + "', factDescription: '" + description + "', " + concatSourcesJsonPart(cevent.citations) + "},\n"
                             );
@@ -204,7 +216,7 @@ public class GedcomSourceCheck {
                                     break;
 
                             }
-                            Date eventDate = parseGedcomDate(pevent.date);
+                            Date eventDate = parseGedcomDateWithAdditions(pevent.date);
                             if (eventDate != null && indiDateOfBirth != null && eventDate.after(indiDateOfBirth)) {
                                 reportBuf.append(aBasePart + concatDatePart(pevent.date, indiDateOfBirth)
                                         + "factType: '" + type
@@ -238,7 +250,7 @@ public class GedcomSourceCheck {
                                 break;
 
                         }
-                        Date eventDate = parseGedcomDate(sevent.date);
+                        Date eventDate = parseGedcomDateWithAdditions(sevent.date);
                         if (indiDateOfBirth != null && indiDateOfDeath != null && eventDate != null && eventDate.after(indiDateOfBirth) && eventDate.before(indiDateOfDeath)) {
                             reportBuf.append(aBasePart + concatDatePart(sevent.date, indiDateOfBirth) + "factType: '" + type + "', factDescription: '" + description + "', " + concatSourcesJsonPart(sevent.citations) + "},\n");
                         }
@@ -248,7 +260,7 @@ public class GedcomSourceCheck {
 
         }
 
-        String footer = "]});";
+        String footer = "]";
         reportBuf.append(footer);
 
         return reportBuf.toString();
@@ -262,7 +274,7 @@ public class GedcomSourceCheck {
      * @param pIndiDateOfBirth
      * @return the concatinated json string
      */
-    private static String concatPlaceePart(Place pPlace) {
+    private String concatPlaceePart(Place pPlace) {
         String retVal = "";
 
         if (pPlace != null && pPlace.placeName != null && pPlace.placeName.length() > 0) {
@@ -285,7 +297,7 @@ public class GedcomSourceCheck {
      * @param {Date} pMinDate
      * @param {Date} pMaxDate
      */
-    private static void printOutFactsOfIndividual(Individual pIndi, String pBasePart,
+    private void printOutFactsOfIndividual(Individual pIndi, String pBasePart,
             String pRelevance, Date pMinDate, Date pMaxDate) {
 
         String aBasePart = pBasePart + "relevance:'" + pRelevance + "', ";
@@ -336,9 +348,9 @@ public class GedcomSourceCheck {
         }
     }
 
-    private static String localiseString(String aKey) {
+    private String localiseString(String aKey) {
 
-        ResourceBundle labels = ResourceBundle.getBundle("util.LocalisedText", Locale.getDefault());
+        ResourceBundle labels = ResourceBundle.getBundle("util.LocalisedText", this.getLocale());
         String retVal;
 
         try {
@@ -357,11 +369,11 @@ public class GedcomSourceCheck {
      * @param {Date} pMaxDate
      * @param {String} pJsonStringToPrint
      */
-    private static void printOutFactDependentOnDate(StringWithCustomTags pGedcomEventDate,
+    private void printOutFactDependentOnDate(StringWithCustomTags pGedcomEventDate,
             Date pMinDate, Date pMaxDate, String pJsonStringToPrint) {
 
         try {
-            Date eventDate = parseGedcomDate(pGedcomEventDate);
+            Date eventDate = parseGedcomDateWithAdditions(pGedcomEventDate);
             if (eventDate.equals(pMinDate) || eventDate.equals(pMaxDate) || (eventDate.after(pMinDate) && eventDate.before(pMaxDate))) {
                 reportBuf.append(pJsonStringToPrint);
             }
@@ -377,7 +389,7 @@ public class GedcomSourceCheck {
      * @param pCitations the list of citations to process
      * @return the concatinated string
      */
-    private static String concatSourcesJsonPart(List<AbstractCitation> pCitations) {
+    private String concatSourcesJsonPart(List<AbstractCitation> pCitations) {
 
         int primaryCount = 0;
         String primaryDetails = "";
@@ -426,7 +438,7 @@ public class GedcomSourceCheck {
      * @param pCitations the list of citations to process
      * @return the concatinated string
      */
-    private static String extractDetailsFromSource(CitationWithSource pCitation) {
+    private String extractDetailsFromSource(CitationWithSource pCitation) {
         String retVal;
         StringWithCustomTags wherePart = pCitation.whereInSource;
         String titlePart = pCitation.source.title.get(0);
@@ -448,7 +460,7 @@ public class GedcomSourceCheck {
      * @param pIndiDateOfBirth
      * @return the concatinated json string
      */
-    private static String concatDatePart(StringWithCustomTags pGedcomDate, Date pIndiDateOfBirth) {
+    private String concatDatePart(StringWithCustomTags pGedcomDate, Date pIndiDateOfBirth) {
 
         // quick exit if gedcomdate is empty
         if (pGedcomDate == null || pGedcomDate.value.length() < 1) {
@@ -457,20 +469,87 @@ public class GedcomSourceCheck {
 
         Date eventDate;
         try {
-            eventDate = parseGedcomDate(pGedcomDate);
+            eventDate = parseGedcomDateWithAdditions(pGedcomDate);
             DateFormat outptFormatter = new SimpleDateFormat("dd.MM.yyyy");
 
             long diffInMillies = eventDate.getTime() - pIndiDateOfBirth.getTime();
             long diffInDays = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
             long age = diffInDays / 365;
 
-            // Sample formating date to a special locale format
-            DateFormat df = DateFormat.getDateInstance(DateFormat.MEDIUM, new java.util.Locale("en"));
+            String formattedDate = formatDate(pGedcomDate, this.getLocale());
 
-            return "factDate: '" + df.format(eventDate) + "', factInternalDate:'" + outptFormatter.format(eventDate) + "', age: '" + age + "', ";
+            return "factDate: '" + formattedDate + "', factInternalDate:'" + outptFormatter.format(eventDate) + "', age: '" + age + "', ";
         } catch (ParseException e) {
             return "factDate: '" + pGedcomDate.value + "', factInternalDate:'01.01.1200', age: '', ";
         }
+    }
+
+    private String formatDate(StringWithCustomTags pGedcomDate, Locale locale) {
+
+        String retVal;
+
+        String inStringDate = pGedcomDate.value;
+        String outStringDate1 = inStringDate;
+        String outStringDate2 = null;
+        String descriptivePart = "{0}";
+        ResourceBundle labels = ResourceBundle.getBundle("util.LocalisedText", locale);
+
+        if (inStringDate.contains("BET")) {
+            String temp = inStringDate.replace("BET ", "");
+            outStringDate1 = temp.substring(0, temp.indexOf(" AND "));
+            outStringDate2 = temp.substring(temp.indexOf(" AND ") + 5);
+            descriptivePart = labels.getString("DATE_BET_AND");
+
+        } else if (inStringDate.contains(" TO ")) {
+            String temp = inStringDate.replace("FROM ", "");
+            outStringDate1 = temp.substring(0, temp.indexOf(" TO "));
+            outStringDate2 = temp.substring(temp.indexOf(" TO ") + 4);
+            descriptivePart = labels.getString("DATE_FROM_TO");
+
+        } else if (inStringDate.contains("ABT")) {
+            outStringDate1 = inStringDate.replace("ABT ", "");
+            descriptivePart = labels.getString("DATE_ABT");
+        } else if (inStringDate.contains("BEF")) {
+            outStringDate1 = inStringDate.replace("BEF ", "");
+            descriptivePart = labels.getString("DATE_BEF");
+        } else if (inStringDate.contains("CAL")) {
+            outStringDate1 = inStringDate.replace("CAL ", "");
+            descriptivePart = labels.getString("DATE_CAL");
+        } else if (inStringDate.contains("TO")) {
+            outStringDate1 = inStringDate.replace("TO ", "");
+            descriptivePart = labels.getString("DATE_TO");
+        } else if (inStringDate.contains("EST")) {
+            outStringDate1 = inStringDate.replace("EST ", "");
+            descriptivePart = labels.getString("DATE_EST");
+        } else if (inStringDate.contains("AFT")) {
+            outStringDate1 = inStringDate.replace("AFT ", "");
+            descriptivePart = labels.getString("DATE_AFT");
+        } else if (inStringDate.contains("FROM")) {
+            outStringDate1 = inStringDate.replace("FROM ", "");
+            descriptivePart = labels.getString("DATE_FROM");
+        }
+
+        DateFormat dfMedium = DateFormat.getDateInstance(DateFormat.MEDIUM, locale);
+        DateFormat dfYear = new SimpleDateFormat("MMMM", new Locale("en"));
+        DateFormat dfMonth = new SimpleDateFormat("M", locale);
+
+        GedcomDateInformation dateInfo1 = parseGedcomDate(outStringDate1, locale);
+        GedcomDateInformation dateInfo2;
+
+        System.out.println("formatGedcomDAte: " + outStringDate1);
+
+        if (outStringDate2 != null) {
+            dateInfo2 = parseGedcomDate(outStringDate2, locale);
+        } else {
+            dateInfo2 = dateInfo1;
+        }
+
+        String dateString1 = dateInfo1.dataFormat.format(dateInfo1.date);
+        String dateString2 = dateInfo2.dataFormat.format(dateInfo2.date);
+
+        retVal = MessageFormat.format(descriptivePart, dateString1, dateString2);
+
+        return retVal;
     }
 
     /**
@@ -480,7 +559,7 @@ public class GedcomSourceCheck {
      * @param pGedcomDate the string representing a date in gedcom
      * @return the parsed date
      */
-    private static Date parseGedcomDate(StringWithCustomTags pGedcomDate) throws ParseException {
+    private Date parseGedcomDateWithAdditions(StringWithCustomTags pGedcomDate) throws ParseException {
         System.out.println(".." + pGedcomDate);
         Date retVal = null;
 
@@ -510,25 +589,55 @@ public class GedcomSourceCheck {
                 outStringDate = inStringDate.replace("FROM ", "");
             }
 
-            pGedcomDate = new StringWithCustomTags(outStringDate);
+            retVal = parseGedcomDate(outStringDate, this.getLocale()).date;
 
-            java.util.Locale loc = new java.util.Locale("en");
-            DateFormat formatter = new SimpleDateFormat("dd MMM yyyy", loc);
-            DateFormat formatter2 = new SimpleDateFormat("yyyy");
-            DateFormat formatter3 = new SimpleDateFormat("MMM yyyy", loc);
-
-            try {
-                retVal = formatter.parse(pGedcomDate.toString());
-            } catch (java.text.ParseException e1) {
-                try {
-                    retVal = formatter2.parse(pGedcomDate.toString());
-                } catch (java.text.ParseException e2) {
-                    retVal = formatter3.parse(pGedcomDate.toString());
-                }
-            }
         }
 
         return retVal;
+    }
+
+    private GedcomDateInformation parseGedcomDate(String pEnglishDate, Locale targetLocale) {
+        Date retDate = null;
+        DateFormat retFormat = null;
+
+        java.util.Locale loc = new java.util.Locale("en");
+        DateFormat formatter = new SimpleDateFormat("dd MMM yyyy", loc);
+        DateFormat formatter2 = new SimpleDateFormat("yyyy");
+        DateFormat formatter3 = new SimpleDateFormat("MMM yyyy", loc);
+
+        if (pEnglishDate != null) {
+
+            try {
+                retDate = formatter.parse(pEnglishDate);
+                retFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, targetLocale);
+            } catch (java.text.ParseException e1) {
+                try {
+                    retDate = formatter2.parse(pEnglishDate);
+                    retFormat = new SimpleDateFormat("yyyy", targetLocale);
+                } catch (java.text.ParseException e2) {
+                    try {
+                        retDate = formatter3.parse(pEnglishDate);
+                        retFormat = new SimpleDateFormat("MMM yyyy", targetLocale);
+                    } catch (java.text.ParseException e3) {
+                        System.err.println("Non of the formatters was able to parse the following date: " + pEnglishDate);
+                    }
+
+                }
+            }
+        }
+        return new GedcomDateInformation(retDate, retFormat);
+    }
+
+    private class GedcomDateInformation {
+
+        public Date date;
+        public DateFormat dataFormat;
+
+        public GedcomDateInformation(Date pDate, DateFormat pFormat) {
+            this.date = pDate;
+            this.dataFormat = pFormat;
+        }
+
     }
 
 }
