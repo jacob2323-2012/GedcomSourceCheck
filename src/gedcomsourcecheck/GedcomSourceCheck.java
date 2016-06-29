@@ -34,7 +34,7 @@ public class GedcomSourceCheck {
 
     private Locale _locale;
 
-    public Locale getLocale() {
+    private Locale getLocale() {
         return _locale;
     }
 
@@ -103,6 +103,10 @@ public class GedcomSourceCheck {
 
     }
 
+    public GedcomSourceCheck() {
+        _locale = Locale.getDefault();
+    }
+
     public GedcomSourceCheck(Locale pLocale) {
         _locale = pLocale;
     }
@@ -136,7 +140,7 @@ public class GedcomSourceCheck {
         reportBuf.append(header);
 
         for (Individual indi : gedcom.individuals.values()) {
-            Date indiDateOfBirth = parseGedcomDateRange(new StringWithCustomTags("01 Jan 1200")).date;
+            Date indiDateOfBirth = null;
             Date indiDateOfDeath = new Date();
 
             String name = "{formattedName: '" + indi.formattedName() + "', ";
@@ -477,18 +481,23 @@ public class GedcomSourceCheck {
 
         // quick exit if gedcomdate is empty
         if (pGedcomDateRange == null) {
-            return "factDate: '', factInternalDate:'01.01.1200', age: '', ";
+            return "factDate: '', factInternalDate:'01.01.1199', age: '', ";
+        } else {
+            Date eventDate = pGedcomDateRange.date;
+            if (eventDate == null) {
+                return "factDate: '" + pGedcomDateRange.formattedString + "', factInternalDate:'01.01.1200', age: '', ";
+            } else {
+                String agePart = "age: ''";
+                if (pIndiDateOfBirth != null) {
+                    long diffInMillies = eventDate.getTime() - pIndiDateOfBirth.getTime();
+                    long diffInDays = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
+                    long age = diffInDays / 365;
+                    agePart = "age: '" + age + "'";
+                }
+                DateFormat outptFormatter = new SimpleDateFormat("dd.MM.yyyy");
+                return "factDate: '" + pGedcomDateRange.formattedString + "', factInternalDate:'" + outptFormatter.format(eventDate) + "'," + agePart + " , ";
+            }
         }
-
-        Date eventDate;
-        eventDate = pGedcomDateRange.date;
-        DateFormat outptFormatter = new SimpleDateFormat("dd.MM.yyyy");
-
-        long diffInMillies = eventDate.getTime() - pIndiDateOfBirth.getTime();
-        long diffInDays = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
-        long age = diffInDays / 365;
-
-        return "factDate: '" + pGedcomDateRange.formattedString + "', factInternalDate:'" + outptFormatter.format(eventDate) + "', age: '" + age + "', ";
     }
 
     /**
@@ -565,7 +574,7 @@ public class GedcomSourceCheck {
             String aFormattedDateRange = MessageFormat.format(descriptivePart, dateString1, dateString2);
 
             retVal = new GedcomDateRangeInformation(
-                    dateInfo1.date,
+                    dateInfo1.dateIsValid ? dateInfo1.date : null,
                     dateInfo1,
                     dateInfo2,
                     aFormattedDateRange
@@ -578,6 +587,7 @@ public class GedcomSourceCheck {
     private GedcomDateInformation parseGedcomDate(String pEnglishDate) {
         Date retDate = null;
         DateFormat retFormat = null;
+        Boolean dateIsValid = true;
 
         java.util.Locale loc = new java.util.Locale("en");
         DateFormat formatter0 = new SimpleDateFormat("dd MMM yyyy", loc);
@@ -592,6 +602,9 @@ public class GedcomSourceCheck {
                 retFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, this.getLocale());
             } catch (java.text.ParseException e0) {
                 try {
+                    formatter1.parse(pEnglishDate);
+                    // as there is no year, we do not treat this information as a date
+                    dateIsValid = false;
                     retDate = formatter1.parse(pEnglishDate);
                     retFormat = new SimpleDateFormat("dd MMM", this.getLocale());
                 } catch (java.text.ParseException e1) {
@@ -610,17 +623,19 @@ public class GedcomSourceCheck {
                 }
             }
         }
-        return new GedcomDateInformation(retDate, retFormat);
+        return new GedcomDateInformation(retDate, retFormat, dateIsValid);
     }
 
     private class GedcomDateInformation {
 
         public Date date;
         public DateFormat dataFormat;
+        public Boolean dateIsValid;
 
-        public GedcomDateInformation(Date pDate, DateFormat pFormat) {
+        public GedcomDateInformation(Date pDate, DateFormat pFormat, Boolean pDateIsValid) {
             this.date = pDate;
             this.dataFormat = pFormat;
+            this.dateIsValid = pDateIsValid;
         }
 
     }
