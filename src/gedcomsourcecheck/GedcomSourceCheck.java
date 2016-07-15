@@ -5,10 +5,10 @@
  */
 package gedcomsourcecheck;
 
+import gedcomsourcecheck.structs.GedcomDateRangeInformation;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.text.DateFormat;
-import java.text.MessageFormat;
 import java.util.List;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -18,11 +18,11 @@ import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.Locale;
-import java.util.ResourceBundle;
 
 import org.gedcom4j.model.*;
 import org.gedcom4j.parser.GedcomParser;
 import org.gedcom4j.parser.GedcomParserException;
+import util.Util;
 
 /**
  * Creates simple Ahnentafal HTML report from a GEDCOM.
@@ -33,6 +33,11 @@ import org.gedcom4j.parser.GedcomParserException;
 public class GedcomSourceCheck {
 
     private Locale _locale;
+    private GedcomDateParser _dateParser;
+
+    public GedcomDateParser getDateParser() {
+        return _dateParser;
+    }
 
     private Locale getLocale() {
         return _locale;
@@ -109,6 +114,7 @@ public class GedcomSourceCheck {
 
     public GedcomSourceCheck(Locale pLocale) {
         _locale = pLocale;
+        _dateParser = new GedcomDateParser(pLocale);
     }
 
     /**
@@ -143,11 +149,11 @@ public class GedcomSourceCheck {
             Date indiDateOfBirth = null;
             Date indiDateOfDeath = new Date();
 
-            String name = "{formattedName: '" + indi.formattedName() + "', ";
+            String name = "{formattedName: '" + indi.formattedName() + " - "+indi.xref.substring(1, indi.xref.length()-1)+" ', ";
             String aBasePart = name + "relevance:'direct', ";
 
             for (IndividualEvent ievent : indi.events) {
-                GedcomDateRangeInformation dateRange = parseGedcomDateRange(ievent.date);
+                GedcomDateRangeInformation dateRange = getDateParser().parseGedcomDateRange(ievent.date);
                 switch (ievent.type) {
                     case BIRTH:
                         if (dateRange != null) {
@@ -165,7 +171,7 @@ public class GedcomSourceCheck {
             printOutFactsOfIndividual(indi, name, "direct", indiDateOfBirth, indiDateOfDeath);
 
             for (PersonalName pName : indi.names) {
-                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: '" + localiseString("NAME") + "', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
+                reportBuf.append(aBasePart + concatDatePart(null, indiDateOfBirth) + "factType: '" + Util.localiseString("NAME", getLocale()) + "', factDescription: '" + pName.givenName + " " + pName.surname + "', " + concatSourcesJsonPart(pName.citations) + "},\n");
             }
 
             for (FamilySpouse fams : indi.familiesWhereSpouse) {
@@ -188,7 +194,7 @@ public class GedcomSourceCheck {
                                 break;
 
                         }
-                        GedcomDateRangeInformation dateRange = parseGedcomDateRange(cevent.date);
+                        GedcomDateRangeInformation dateRange = getDateParser().parseGedcomDateRange(cevent.date);
                         if (dateRange != null) {
                             Date eventDate = dateRange.date;
                             if (eventDate != null && indiDateOfDeath != null && indiDateOfBirth != null && eventDate.before(indiDateOfDeath)) {
@@ -223,7 +229,7 @@ public class GedcomSourceCheck {
                                     break;
 
                             }
-                            GedcomDateRangeInformation dateRange = parseGedcomDateRange(pevent.date);
+                            GedcomDateRangeInformation dateRange = getDateParser().parseGedcomDateRange(pevent.date);
                             if (dateRange != null) {
                                 Date eventDate = dateRange.date;
                                 if (eventDate != null && indiDateOfBirth != null && eventDate.after(indiDateOfBirth)) {
@@ -260,7 +266,7 @@ public class GedcomSourceCheck {
                                 break;
 
                         }
-                        GedcomDateRangeInformation dateRange = parseGedcomDateRange(sevent.date);
+                        GedcomDateRangeInformation dateRange = getDateParser().parseGedcomDateRange(sevent.date);
                         if (dateRange != null) {
                             Date eventDate = dateRange.date;
                             if (indiDateOfBirth != null && indiDateOfDeath != null && eventDate != null && eventDate.after(indiDateOfBirth) && eventDate.before(indiDateOfDeath)) {
@@ -318,10 +324,10 @@ public class GedcomSourceCheck {
 
         // HashMap<String, Object> config = relevanceMapping.get(pRelevance);
         for (IndividualAttribute attrib : pIndi.attributes) {
-            GedcomDateRangeInformation rangeInfo = parseGedcomDateRange(attrib.date);
+            GedcomDateRangeInformation rangeInfo = getDateParser().parseGedcomDateRange(attrib.date);
             printOutFactDependentOnDate(attrib.date, pMinDate, pMaxDate,
                     aBasePart + concatDatePart(rangeInfo, pMinDate)
-                    + "factType: '" + localiseString(attrib.type.toString())
+                    + "factType: '" + Util.localiseString(attrib.type.toString(), getLocale())
                     + "', factDescription: '" + attrib.description + "', "
                     + concatSourcesJsonPart(attrib.citations) + "},\n");
         }
@@ -340,10 +346,10 @@ public class GedcomSourceCheck {
                     break;
             }
 
-            GedcomDateRangeInformation rangeInfo = parseGedcomDateRange(ievent.date);
+            GedcomDateRangeInformation rangeInfo = getDateParser().parseGedcomDateRange(ievent.date);
             printOutFactDependentOnDate(ievent.date, pMinDate, pMaxDate,
                     aBasePart + concatDatePart(rangeInfo, pMinDate)
-                    + "factType: '" + localiseString(type)
+                    + "factType: '" + Util.localiseString(type, getLocale())
                     + "', factDescription: '" + description + "', "
                     + concatSourcesJsonPart(ievent.citations) + "},\n");
         }
@@ -355,28 +361,17 @@ public class GedcomSourceCheck {
             for (FamilyEvent fevent : fam.events) {
                 String type = (fevent.type == FamilyEventType.EVENT) ? fevent.subType.value : fevent.type.toString();
                 String place = (fevent.place != null) ? fevent.place.placeName : "";
-                GedcomDateRangeInformation rangeInfo = parseGedcomDateRange(fevent.date);
+                GedcomDateRangeInformation rangeInfo = getDateParser().parseGedcomDateRange(fevent.date);
                 printOutFactDependentOnDate(fevent.date, pMinDate, pMaxDate,
                         aBasePart + concatDatePart(rangeInfo, pMinDate)
-                        + "factType: '" + localiseString(type)
+                        + "factType: '" + Util.localiseString(type, this.getLocale())
                         + "', factDescription: 'Heirat in " + place + "', "
                         + concatSourcesJsonPart(fevent.citations) + "},\n");
             }
         }
     }
 
-    private String localiseString(String aKey) {
 
-        ResourceBundle labels = ResourceBundle.getBundle("util.LocalisedText", this.getLocale());
-        String retVal;
-
-        try {
-            retVal = labels.getString(aKey);
-        } catch (java.util.MissingResourceException e) {
-            retVal = aKey;
-        }
-        return retVal;
-    }
 
     /**
      * Prints out one attribute/event
@@ -390,7 +385,7 @@ public class GedcomSourceCheck {
             Date pMinDate, Date pMaxDate, String pJsonStringToPrint) {
 
         try {
-            Date eventDate = parseGedcomDateRange(pGedcomEventDate).date;
+            Date eventDate = getDateParser().parseGedcomDateRange(pGedcomEventDate).date;
             if (eventDate.equals(pMinDate) || eventDate.equals(pMaxDate) || (eventDate.after(pMinDate) && eventDate.before(pMaxDate))) {
                 reportBuf.append(pJsonStringToPrint);
             }
@@ -500,163 +495,6 @@ public class GedcomSourceCheck {
         }
     }
 
-    /**
-     * Concatinate the part of the JSON String containing the sources separated
-     * by the certainty.
-     *
-     * @param pGedcomDate the string representing a date in gedcom
-     * @return the parsed date
-     */
-    private GedcomDateRangeInformation parseGedcomDateRange(StringWithCustomTags pGedcomDate) {
-        System.out.println(".." + pGedcomDate);
-        GedcomDateRangeInformation retVal = null;
-
-        if (pGedcomDate != null && pGedcomDate.value.length() > 0) {
-
-            String inStringDate = pGedcomDate.value;
-            String outStringDate1 = inStringDate;
-            String outStringDate2 = null;
-            String descriptivePart = "{0}";
-
-            if (inStringDate.contains("BET")) {
-                String temp = inStringDate.replace("BET ", "");
-                outStringDate1 = temp.substring(0, temp.indexOf(" AND "));
-                outStringDate2 = temp.substring(temp.indexOf(" AND ") + 5);
-                descriptivePart = localiseString("DATE_BET_AND");
-
-            } else if (inStringDate.contains(" TO ")) {
-                String temp = inStringDate.replace("FROM ", "");
-                outStringDate1 = temp.substring(0, temp.indexOf(" TO "));
-                outStringDate2 = temp.substring(temp.indexOf(" TO ") + 4);
-                descriptivePart = localiseString("DATE_FROM_TO");
-
-            } else if (inStringDate.contains("ABT")) {
-                outStringDate1 = inStringDate.replace("ABT ", "");
-                descriptivePart = localiseString("DATE_ABT");
-
-            } else if (inStringDate.contains("BEF")) {
-                outStringDate1 = inStringDate.replace("BEF ", "");
-                descriptivePart = localiseString("DATE_BEF");
-
-            } else if (inStringDate.contains("CAL")) {
-                outStringDate1 = inStringDate.replace("CAL ", "");
-                descriptivePart = localiseString("DATE_CAL");
-
-            } else if (inStringDate.contains("TO")) {
-                outStringDate1 = inStringDate.replace("TO ", "");
-                descriptivePart = localiseString("DATE_TO");
-
-            } else if (inStringDate.contains("EST")) {
-                outStringDate1 = inStringDate.replace("EST ", "");
-                descriptivePart = localiseString("DATE_EST");
-
-            } else if (inStringDate.contains("AFT")) {
-                outStringDate1 = inStringDate.replace("AFT ", "");
-                descriptivePart = localiseString("DATE_AFT");
-
-            } else if (inStringDate.contains("FROM")) {
-                outStringDate1 = inStringDate.replace("FROM ", "");
-                descriptivePart = localiseString("DATE_FROM");
-            }
-
-            GedcomDateInformation dateInfo1 = parseGedcomDate(outStringDate1);
-            GedcomDateInformation dateInfo2;
-
-            if (outStringDate2 != null) {
-                dateInfo2 = parseGedcomDate(outStringDate2);
-            } else {
-                dateInfo2 = dateInfo1;
-            }
-
-            String dateString1 = dateInfo1.dataFormat.format(dateInfo1.date);
-            String dateString2 = dateInfo2.dataFormat.format(dateInfo2.date);
-
-            String aFormattedDateRange = MessageFormat.format(descriptivePart, dateString1, dateString2);
-
-            retVal = new GedcomDateRangeInformation(
-                    dateInfo1.dateIsValid ? dateInfo1.date : null,
-                    dateInfo1,
-                    dateInfo2,
-                    aFormattedDateRange
-            );
-
-        }
-        return retVal;
-    }
-
-    private GedcomDateInformation parseGedcomDate(String pEnglishDate) {
-        Date retDate = null;
-        DateFormat retFormat = null;
-        Boolean dateIsValid = true;
-
-        java.util.Locale loc = new java.util.Locale("en");
-        DateFormat formatter0 = new SimpleDateFormat("dd MMM yyyy", loc);
-        DateFormat formatter1 = new SimpleDateFormat("dd MMM", loc);
-        DateFormat formatter2 = new SimpleDateFormat("yyyy");
-        DateFormat formatter3 = new SimpleDateFormat("MMM yyyy", loc);
-
-        if (pEnglishDate != null) {
-
-            try {
-                retDate = formatter0.parse(pEnglishDate);
-                retFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, this.getLocale());
-            } catch (java.text.ParseException e0) {
-                try {
-                    formatter1.parse(pEnglishDate);
-                    // as there is no year, we do not treat this information as a date
-                    dateIsValid = false;
-                    retDate = formatter1.parse(pEnglishDate);
-                    retFormat = new SimpleDateFormat("dd MMM", this.getLocale());
-                } catch (java.text.ParseException e1) {
-                    try {
-                        retDate = formatter2.parse(pEnglishDate);
-                        retFormat = new SimpleDateFormat("yyyy", this.getLocale());
-                    } catch (java.text.ParseException e2) {
-                        try {
-                            retDate = formatter3.parse(pEnglishDate);
-                            retFormat = new SimpleDateFormat("MMM yyyy", this.getLocale());
-                        } catch (java.text.ParseException e3) {
-                            System.err.println("Non of the formatters was able to parse the following date: " + pEnglishDate);
-                        }
-
-                    }
-                }
-            }
-        }
-        return new GedcomDateInformation(retDate, retFormat, dateIsValid);
-    }
-
-    private class GedcomDateInformation {
-
-        public Date date;
-        public DateFormat dataFormat;
-        public Boolean dateIsValid;
-
-        public GedcomDateInformation(Date pDate, DateFormat pFormat, Boolean pDateIsValid) {
-            this.date = pDate;
-            this.dataFormat = pFormat;
-            this.dateIsValid = pDateIsValid;
-        }
-
-    }
-
-    private class GedcomDateRangeInformation {
-
-        public Date date;
-        public GedcomDateInformation dateInfo1;
-        public GedcomDateInformation dateInfo2;
-        public String formattedString;
-
-        public GedcomDateRangeInformation(
-                Date pDate,
-                GedcomDateInformation pDateInfo1,
-                GedcomDateInformation pDateInfo2,
-                String pFormattedString) {
-            date = pDate;
-            dateInfo1 = pDateInfo1;
-            dateInfo2 = pDateInfo2;
-            formattedString = pFormattedString;
-        }
-    }
+ 
 
 }
